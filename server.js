@@ -1,33 +1,48 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { Rembg } from "@xixihaha/rembg-js";
+import fetch from "node-fetch";
 
 const app = express();
 const upload = multer();
-const rembg = new Rembg(); // إنشاء كائن واحد من Rembg
 
 app.use(cors());
 
-// مسار إزالة الخلفية
 app.post("/remove-bg", upload.single("image"), async (req, res) => {
   try {
-    const inputBuffer = req.file.buffer;
+    const apiKey = process.env.REMOVE_BG_API_KEY;
 
-    // إزالة الخلفية
-    const outputBuffer = await rembg.remove(inputBuffer);
+    const result = await fetch("https://api.remove.bg/v1.0/removebg", {
+      method: "POST",
+      headers: {
+        "X-Api-Key": apiKey,
+      },
+      body: (() => {
+        const form = new FormData();
+        form.append("image_file", req.file.buffer, "image.png");
+        form.append("size", "auto");
+        return form;
+      })(),
+    });
 
-    const base64 = outputBuffer.toString("base64");
+    if (!result.ok) {
+      const errorText = await result.text();
+      console.log("RemoveBG Error:", errorText);
+      return res.status(500).json({ error: "Failed to remove background" });
+    }
+
+    const buffer = await result.buffer();
+    const base64 = buffer.toString("base64");
+
     res.json({ image: base64 });
 
   } catch (err) {
-    console.log("Error removing background:", err);
-    res.status(500).json({ error: "Error removing background" });
+    console.log("Error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// تشغيل السيرفر
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Background removal server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
