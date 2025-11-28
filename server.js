@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { removeBackground } from "@imgly/background-removal";
+import { removeBackground } from "rembg-js";
 
 const app = express();
 const upload = multer();
@@ -13,10 +13,11 @@ app.post("/remove-bg", upload.single("image"), async (req, res) => {
   try {
     const input = req.file.buffer;
 
-    const output = await removeBackground(input);
+    const output = await removeBackground(input, {
+      model: "u2net",
+    });
 
-    const base64 = Buffer.from(output).toString("base64");
-
+    const base64 = output.toString("base64");
     res.json({ image: base64 });
 
   } catch (err) {
