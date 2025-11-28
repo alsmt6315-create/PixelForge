@@ -1,32 +1,37 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { removeBackground } from "rembg-js";
+import { pipeline } from "@xenova/transformers";
 
 const app = express();
 const upload = multer();
 
 app.use(cors());
-app.use(express.json());
+
+let removeBg;
+
+(async () => {
+  removeBg = await pipeline("image-segmentation", "Xenova/deeplabv3-resnet50");
+})();
 
 app.post("/remove-bg", upload.single("image"), async (req, res) => {
   try {
-    const input = req.file.buffer;
+    if (!removeBg) return res.status(503).json({ error: "Model loading..." });
 
-    const output = await removeBackground(input, {
-      model: "u2net",
+    const inputBuffer = req.file.buffer;
+
+    const output = await removeBg(inputBuffer, {
+      threshold: 0.9,
     });
 
     const base64 = output.toString("base64");
-    res.json({ image: base64 });
 
+    res.json({ image: base64 });
   } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ error: "Error removing background" });
+    console.log("Error:", err);
+    res.status(500).json({ error: "Failed to remove background" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
