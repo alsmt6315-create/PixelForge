@@ -1,37 +1,57 @@
 import express from "express";
+import fetch from "node-fetch";
 import cors from "cors";
-import multer from "multer";
-import { pipeline } from "@xenova/transformers";
 
 const app = express();
-const upload = multer();
-
+app.use(express.json({ limit: "20mb" }));
 app.use(cors());
 
-let removeBg;
+// الرابط الخاص بإزالة الخلفية من HuggingFace
+const API_URL = "https://api-inference.huggingface.co/models/briaai/RMBG-1.4";
 
-(async () => {
-  removeBg = await pipeline("image-segmentation", "Xenova/deeplabv3-resnet50");
-})();
+// التوكن المخزّن داخل Render
+const HF_TOKEN = process.env.HUGGINGFACE_API_KEY;
 
-app.post("/remove-bg", upload.single("image"), async (req, res) => {
+app.post("/remove-bg", async (req, res) => {
   try {
-    if (!removeBg) return res.status(503).json({ error: "Model loading..." });
+    const { image } = req.body;
 
-    const inputBuffer = req.file.buffer;
+    if (!image) {
+      return res.status(400).json({ error: "لا توجد صورة مرسلة" });
+    }
 
-    const output = await removeBg(inputBuffer, {
-      threshold: 0.9,
+    // ارسال الصورة للهجنج فيس
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${HF_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        inputs: image,
+      }),
     });
 
-    const base64 = output.toString("base64");
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log("API ERROR:", errorText);
+      return res.status(500).json({ error: "خطأ من API" });
+    }
 
-    res.json({ image: base64 });
+    const result = await response.arrayBuffer();
+    const base64Image = Buffer.from(result).toString("base64");
+
+    res.json({
+      success: true,
+      image: `data:image/png;base64,${base64Image}`,
+    });
   } catch (err) {
-    console.log("Error:", err);
-    res.status(500).json({ error: "Failed to remove background" });
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: "خطأ داخلي بالسيرفر" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
